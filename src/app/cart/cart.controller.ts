@@ -3,141 +3,86 @@ import { Cart } from "./cart.model"; // model
 class CartController {
 // add item to cart
     public  addItem = async (req: any, res: any) => {
-        const data = req.body;
         const customerId = Number(req.body.customerId);
-        const productId = Number(data.items[0].id);
-        let doc: any;
+        const productId = Number(req.body.item.id);
         try {
-         doc = await Cart.findOne({customerId}); // check if cutomer exist in cart collecton
+            // tslint:disable-next-line: max-line-length
+            const response = await Cart.updateOne({customerId}, {$addToSet: {items: { id: productId, name: req.body.item.name, price: req.body.item.price}}});
+            if (response.n) { // document matched, update the items array
+                if (response.nModified) {
+                    res.status(200).json({result: "Success", response});
+                } else {
+                    res.sendStatus(304); // item already exist
+                }
+            } else {
+            // document not matched, then create customer's cart
+            const cart = new Cart({
+                customerName: req.body.customerName,
+                customerId,
+                items: [{
+                    id: productId,
+                    name: req.body.item.name,
+                    price: req.body.item.price,
+                }],
+            });
+            const result = await cart.save();  // save to cart
+            res.status(200).json({result: "Success", response: result});
+            }
         } catch (error) {
             console.error(error);
             res.status(400).json({result: "Error", error});
         }
-
-        if (doc) {
-            // if customer exist then update the items array
-            const items = doc.toObject().items;
-            const index = items.findIndex((x: any ) => x.id === productId);
-
-            if (index === -1) {
-                // if item not exist in cart already
-                items.push({id: productId, name: data.items[0].name, price: data.items[0].price});
-                try {
-                    const response = await Cart.updateOne({customerId: data.customerId}, {items}); // update to cart
-                    res.status(200).json({result: "Success", response});
-                 } catch (error) {
-                     console.error(error);
-                     res.status(400).json({result: "Error", error});
-                 }
-            } else {
-                res.sendStatus(304); // item already exist
-            }
-        } else {
-            // customer'not exist in cart then create customer's cart document
-            const cart = new Cart({
-                customerName: data.customerName,
-                customerId:  data.customerId,
-                items: [{
-                    id: productId,
-                    name: data.items[0].name,
-                    price: data.items[0].price,
-                }],
-            });
-            try {
-               const response = await cart.save();  // save to cart
-               res.status(200).json({result: "Success", response});
-            } catch (error) {
-                console.error(error);
-                res.status(400).json({result: "Error", error});
-            }
-        }
-
     }
 // delete item from cart
     public  deleteItem = async (req: any, res: any) => {
         const customerId: number = Number(req.params.customerId);
         const productId: number = Number(req.params.productId);
-        let doc: any;
-        try {
-         doc = await Cart.findOne({customerId});  // check for customer in cart
-        } catch (error) {
-            console.error(error);
-            res.status(400).json({result: "Error", error});
-        }
 
-        if (doc) {
-            // customer found, delete item from items array and update item in db
-            let items = doc.toObject().items;
-            const index = items.findIndex((x: any ) => x.id === productId);
-            if (index > -1) {
-                // check if item is exist or not, if exist then delete it
-               delete items[index];
-               const filtered = items.filter( (el: any) => {
-                return el != null;
-              });
-               items = filtered;
-               try {
-                    const response = await Cart.updateOne({customerId}, {items});
-                    res.status(200).json({result: "Success", response});
-                 } catch (error) {
+        try {
+            const response = await Cart.updateOne({customerId}, {$pull: {items: {id: productId}}});
+            if (response.nModified) {
+            res.status(200).json({result: "Success", response});
+            } else {
+            res.sendStatus(304);
+            }
+            } catch (error) {
                      console.error(error);
                      res.status(400).json({result: "Error", error});
                     }
-                } else {
-                    // item not exist
-                    res.sendStatus(304);
-                }
-        } else {
-            // customer not exist in cart
-            res.sendStatus(304);
-        }
     }
 // delete all items
     public  deleteAllItems = async (req: any, res: any) => {
         const customerId: number = Number(req.params.customerId);
-        let doc: any;
         try {
-         doc = await Cart.findOne({customerId});  // check for customer in cart
-        } catch (error) {
-            console.error(error);
-            res.status(400).json({result: "Error", error});
-        }
-        if (doc) {
-            // customer found, empty the items array
-            try {
-                const response = await Cart.updateOne({customerId}, {items: []});
+            const response = await Cart.updateOne({customerId}, {items: []});
+
+            if (response.nModified) {
                 res.status(200).json({result: "Success", response});
-             } catch (error) {
-                 console.error(error);
-                 res.status(400).json({result: "Error", error});
+                } else {
+                res.sendStatus(304);
+                }
+            } catch (error) {
+                    console.error(error);
+                    res.status(400).json({result: "Error", error});
              }
-        } else {
-            res.sendStatus(304);  // customer not exist
-        }
 
     }
 // get all items
     public  getAllItems = async (req: any, res: any) => {
         const customerId: number = Number(req.params.customerId);
-        let doc: any;
         try {
-         doc = await Cart.findOne({customerId}); // check for customer in cart
+         const doc = await Cart.findOne({customerId}, {_id: 0, customerId: 0}); // check for customer in cart
+         if (doc && doc.toObject().items.length) {
+                // send items array in response
+               res.status(200).json({result: "Success", response: doc.toObject().items});
+         } else {
+            res.sendStatus(404); // customer not exist
+        }
         } catch (error) {
             console.error(error);
             res.status(400).json({result: "Error", error});
         }
 
-        if (doc) {
-            try {
-                // send items array in response
-               res.status(200).json({result: "Success", response: doc.toObject().items});
-             } catch (error) {
-                 console.error(error);
-                 res.status(400).json({result: "Error", error});
-             }
-        } else {
-            res.sendStatus(404); // customer not exist
-        }
 }
 }
 export default new CartController();
